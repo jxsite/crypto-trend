@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>加密货币趋势看板 · 实时</title>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --card2:#1c2330; --border:#2a3342;
+    --text:#e6edf3; --muted:#8b949e;
+    --up:#3fb950; --down:#f85149; --flat:#d29922;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; padding:20px; max-width:1200px; margin:0 auto;}
+  header{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;}
+  h1{font-size:22px;}
+  .sub{color:var(--muted); font-size:13px; margin-top:4px;}
+  .refresh-box{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted);}
+  button{background:#238636; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-size:14px; cursor:pointer;}
+  button:hover{background:#2ea043;}
+  button:disabled{opacity:.5; cursor:default;}
+  .overview{background:linear-gradient(135deg,#161b22,#1a2333); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:20px; text-align:center;}
+  .badge{display:inline-block; font-size:26px; font-weight:700; padding:10px 28px; border-radius:999px; margin:8px 0;}
+  .badge.up{background:rgba(63,185,80,.15); color:var(--up); border:1px solid var(--up);}
+  .badge.down{background:rgba(248,81,73,.15); color:var(--down); border:1px solid var(--down);}
+  .badge.flat{background:rgba(210,153,34,.15); color:var(--flat); border:1px solid var(--flat);}
+  .meter{height:10px; background:#222b38; border-radius:999px; margin:14px auto; max-width:520px; position:relative; overflow:hidden;}
+  .meter-fill{height:100%; border-radius:999px; transition:width .6s;}
+  .meter-mid{position:absolute; left:50%; top:-2px; bottom:-2px; width:2px; background:#57606a;}
+  .stats{display:flex; justify-content:center; gap:26px; flex-wrap:wrap; margin-top:12px; font-size:14px; color:var(--muted);}
+  .stats b{font-size:20px; display:block;}
+  .chips{display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-top:14px;}
+  .chip{background:var(--card2); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px;}
+  .chip .p{font-weight:700;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px;}
+  .sector{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px;}
+  .sector-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;}
+  .sector-name{font-size:16px; font-weight:700;}
+  .sector-en{font-size:12px; color:var(--muted); margin-left:6px; font-weight:400;}
+  .tag{font-size:12px; font-weight:700; padding:3px 12px; border-radius:999px;}
+  .tag.up{background:rgba(63,185,80,.15); color:var(--up);}
+  .tag.down{background:rgba(248,81,73,.15); color:var(--down);}
+  .tag.flat{background:rgba(210,153,34,.15); color:var(--flat);}
+  .score-line{font-size:12px; color:var(--muted); margin:6px 0 10px;}
+  .bar{height:6px; background:#222b38; border-radius:999px; margin-bottom:12px; position:relative; overflow:hidden;}
+  .bar-fill{height:100%; border-radius:999px;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  td,th{padding:7px 4px; text-align:right; border-top:1px solid #212a38;}
+  th{color:var(--muted); font-weight:400; font-size:12px; border-top:none;}
+  td:first-child,th:first-child{text-align:left;}
+  .sym{font-weight:700;}
+  .rk{color:var(--muted); font-size:11px; margin-right:6px;}
+  .pos{color:var(--up);} .neg{color:var(--down);} .neu{color:var(--muted);}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px;}
+  .dot.up{background:var(--up);} .dot.down{background:var(--down);} .dot.flat{background:var(--flat);}
+  .method{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; margin-top:20px; font-size:13px; color:var(--muted); line-height:1.8;}
+  .method h3{color:var(--text); font-size:15px; margin-bottom:8px;}
+  .err{background:rgba(248,81,73,.12); border:1px solid var(--down); color:var(--down); border-radius:10px; padding:14px; margin-bottom:16px; text-align:center; display:none;}
+  .loading{text-align:center; color:var(--muted); padding:60px 0;}
+  footer{text-align:center; color:var(--muted); font-size:12px; margin-top:24px; line-height:1.8;}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>📊 加密货币趋势看板</h1>
+    <div class="sub">市值前 100 · 每 5 分钟自动刷新 · 数据来源 CoinGecko</div>
+  </div>
+  <div class="refresh-box">
+    <span id="countdown">--</span>
+    <button id="refreshBtn" onclick="load(true)">手动刷新</button>
+  </div>
+</header>
+
+<div class="err" id="errBox"></div>
+<div class="loading" id="loading">正在拉取实时行情…</div>
+
+<div id="content" style="display:none;">
+  <div class="overview">
+    <div style="color:var(--muted); font-size:14px;">市场整体趋势（前 30 大市值 · 剔除稳定币 · 按市值加权）</div>
+    <div><span class="badge" id="mBadge">—</span></div>
+    <div class="meter"><div class="meter-fill" id="mFill"></div><div class="meter-mid"></div></div>
+    <div style="font-size:13px; color:var(--muted);" id="mScore">综合得分 —</div>
+    <div class="stats">
+      <div><b class="pos" id="cUp">—</b>上升</div>
+      <div><b style="color:var(--flat)" id="cFlat">—</b>震荡</div>
+      <div><b class="neg" id="cDown">—</b>下降</div>
+    </div>
+    <div class="chips" id="topChips"></div>
+  </div>
+  <div class="grid" id="sectorGrid"></div>
+  <div class="method">
+    <h3>趋势判定方法</h3>
+    每个币种按 30 日涨跌（±10% 为强弱分界，计 ±2 分；±3%~±10% 计 ±1 分）、7 日涨跌（±5% 计 ±1 分）、24 小时涨跌（±3% 计 ±0.5 分）打分；
+    总分 ≥ 1.5 为 <b class="pos">上升趋势</b>，≤ -1.5 为 <b class="neg">下降趋势</b>，之间为 <b style="color:var(--flat)">震荡整理</b>。
+    板块趋势取该板块市值前五币种的平均分；大盘取前 30（剔除稳定币）按市值加权平均分。数据缺失的维度按 0 分计。
+    本页面仅做趋势展示，不构成投资建议。
+  </div>
+</div>
+
+<footer>数据由 CoinGecko 公开 API 提供 · 页面在您的浏览器中直接请求数据，每 5 分钟自动更新</footer>
+<script>
+const API = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=1h,24h,7d,30d';
+const STABLES = new Set(['tether','usd-coin','usds','usde','dai','usd1','global-dollar','frax','paypal-usd','first-digital-usd','liquity-usd','usdd','terrausd','neutrino-usd','magic-internet-money','alchemix-usd','float-protocol','rai','stableusd']);
+const SECTORS = [
+  {zh:'基础公链', en:'Layer 1', ids:['bitcoin','ethereum','solana','ripple','binancecoin','tron','cardano','avalanche-2','sui','near','hedera-hashgraph','stellar','litecoin','bitcoin-cash','toncoin','polkadot','cosmos','aptos','zcash','monero']},
+  {zh:'二层扩容', en:'Layer 2', ids:['arbitrum','optimism','polygon','starknet','mantle','zksync','linea']},
+  {zh:'去中心化金融', en:'DeFi', ids:['uniswap','hyperliquid','chainlink','aave','lido-dao','jupiter','raydium','pancakeswap','curve-dao-token','synthetix-network-token']},
+  {zh:'人工智能', en:'AI', ids:['bittensor','render-token','fetch-ai','artificial-superintelligence-alliance','akash-network','virtuals-protocol','the-graph']},
+  {zh:'模因币', en:'Meme', ids:['dogecoin','shiba-inu','pump','pepe','bonk','dogwifcoin','floki','brett','popcat']},
+  {zh:'区块链游戏', en:'Gaming', ids:['immutable-x','gala','the-sandbox','axie-infinity','beam','apecoin','enjincoin']},
+  {zh:'现实世界资产', en:'RWA', ids:['figr-heloc','tether-gold','ondo-finance','quant-network','pax-gold','centrifuge','polymesh']},
+  {zh:'物理基础设施', en:'DePIN', ids:['filecoin','arweave','helium','theta-token','iotex','hivemapper']},
+];
+
+function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : v; }
+function scoreOf(c){
+  const d30=num(c.price_change_percentage_30d_in_currency),
+        d7 =num(c.price_change_percentage_7d_in_currency),
+        d24=num(c.price_change_percentage_24h_in_currency);
+  let s=0;
+  if(d30>10)s+=2; else if(d30>=3)s+=1; else if(d30<=-10)s-=2; else if(d30<=-3)s-=1;
+  if(d7>5)s+=1; else if(d7<-5)s-=1;
+  if(d24>3)s+=0.5; else if(d24<-3)s-=0.5;
+  return Math.round(s*10)/10;
+}
+function trendOf(s){
+  if(s>=1.5) return ['上升趋势','up'];
+  if(s<=-1.5) return ['下降趋势','down'];
+  return ['震荡整理','flat'];
+}
+function fmtPrice(p){
+  if(p===null||p===undefined) return '--';
+  if(p>=1000) return '$'+p.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(p>=1) return '$'+p.toFixed(2);
+  return '$'+p.toFixed(4);
+}
+function fmtPct(v){
+  if(v===null||v===undefined||isNaN(v)) return '<span class="neu">--</span>';
+  const cls = v>0?'pos':(v<0?'neg':'neu');
+  const sign = v>0?'+':'';
+  return '<span class="'+cls+'">'+sign+v.toFixed(2)+'%</span>';
+}
+function fmtMcap(m){
+  if(!m) return '--';
+  return '$'+(m/1e8).toFixed(1)+'亿';
+}
+let countdownTimer=null, refreshTimer=null, nextRefresh=0;
+
+function renderOverview(list){
+  const top30 = list.filter(c=>!STABLES.has(c.id)).slice(0,30);
+  let wSum=0, wTot=0, cu=0, cf=0, cd=0;
+  top30.forEach(c=>{
+    const s=scoreOf(c), w=c.market_cap||0, t=trendOf(s)[1];
+    wSum+=s*w; wTot+=w;
+    if(t==='up')cu++; else if(t==='down')cd++; else cf++;
+  });
+  const avg = wTot? wSum/wTot : 0;
+  const [label,cls]=trendOf(avg);
+  const badge=document.getElementById('mBadge');
+  badge.textContent=label; badge.className='badge '+cls;
+  const fill=document.getElementById('mFill');
+  const pct=Math.min(100,Math.max(0,(avg+3)/6*100));
+  fill.style.width=pct+'%';
+  fill.style.background = cls==='up'?'var(--up)':cls==='down'?'var(--down)':'var(--flat)';
+  document.getElementById('mScore').textContent='综合得分 '+avg.toFixed(2)+'（-3 ~ +3）';
+  document.getElementById('cUp').textContent=cu;
+  document.getElementById('cFlat').textContent=cf;
+  document.getElementById('cDown').textContent=cd;
+  const chips=['bitcoin','ethereum','solana'].map(id=>{
+    const c=list.find(x=>x.id===id); if(!c) return '';
+    return '<div class="chip"><span class="sym">'+c.symbol.toUpperCase()+'</span> <span class="p">'+fmtPrice(c.current_price)+'</span> '+fmtPct(num(c.price_change_percentage_24h_in_currency))+'</div>';
+  }).join('');
+  document.getElementById('topChips').innerHTML=chips;
+}
+
+function renderSectors(list){
+  const byId={}; list.forEach(c=>byId[c.id]=c);
+  const grid=document.getElementById('sectorGrid');
+  let html='';
+  SECTORS.forEach(sec=>{
+    const coins=sec.ids.map(id=>byId[id]).filter(Boolean)
+      .sort((a,b)=>(b.market_cap||0)-(a.market_cap||0)).slice(0,5);
+    if(coins.length<2) return;
+    const avg=coins.reduce((t,c)=>t+scoreOf(c),0)/coins.length;
+    const [label,cls]=trendOf(avg);
+    const rows=coins.map(c=>{
+      const s=scoreOf(c), t=trendOf(s);
+      return '<tr><td><span class="rk">#'+c.market_cap_rank+'</span><span class="dot '+t[1]+'"></span><span class="sym">'+c.symbol.toUpperCase()+'</span></td>'+
+        '<td>'+fmtPrice(c.current_price)+'</td><td>'+fmtPct(num(c.price_change_percentage_24h_in_currency))+'</td>'+
+        '<td>'+fmtPct(num(c.price_change_percentage_7d_in_currency))+'</td>'+
+        '<td>'+fmtPct(num(c.price_change_percentage_30d_in_currency))+'</td></tr>';
+    }).join('');
+    const pct=Math.min(100,Math.max(0,(avg+3)/6*100));
+    const barColor = cls==='up'?'var(--up)':cls==='down'?'var(--down)':'var(--flat)';
+    html+='<div class="sector"><div class="sector-head"><div><span class="sector-name">'+sec.zh+'</span><span class="sector-en">'+sec.en+'</span></div>'+
+      '<span class="tag '+cls+'">'+label+'</span></div>'+
+      '<div class="score-line">板块得分 '+avg.toFixed(2)+' · 取市值前 '+coins.length+' 名</div>'+
+      '<div class="bar"><div class="bar-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>'+
+      '<table><tr><th>币种</th><th>价格</th><th>24h</th><th>7d</th><th>30d</th></tr>'+rows+'</table></div>';
+  });
+  grid.innerHTML=html;
+}
+
+function tick(){
+  const left=Math.max(0,Math.round((nextRefresh-Date.now())/1000));
+  const m=Math.floor(left/60), s=left%60;
+  document.getElementById('countdown').textContent='下次刷新 '+m+':'+String(s).padStart(2,'0');
+}
+
+async function load(manual){
+  const btn=document.getElementById('refreshBtn'), err=document.getElementById('errBox');
+  btn.disabled=true; err.style.display='none';
+  try{
+    const r=await fetch(API);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const list=await r.json();
+    if(!Array.isArray(list)||!list.length) throw new Error('empty');
+    renderOverview(list);
+    renderSectors(list);
+    document.getElementById('loading').style.display='none';
+    document.getElementById('content').style.display='block';
+    const now=new Date();
+    document.querySelector('.sub').textContent='市值前 100 · 每 5 分钟自动刷新 · 数据来源 CoinGecko · 更新于 '+now.toLocaleString('zh-CN');
+    nextRefresh=Date.now()+5*60*1000;
+  }catch(e){
+    err.style.display='block';
+    err.textContent='行情拉取失败（'+e.message+'），请检查网络后重试。';
+    nextRefresh=Date.now()+60*1000;
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+load(false);
+countdownTimer=setInterval(tick,1000);
+refreshTimer=setInterval(()=>load(false),5*60*1000);
+nextRefresh=Date.now()+5*60*1000;
+</script>
+</body>
+</html>
