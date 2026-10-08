@@ -54,6 +54,9 @@
   .pos{color:var(--up);} .neg{color:var(--down);} .neu{color:var(--muted);}
   .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px;}
   .dot.up{background:var(--up);} .dot.down{background:var(--down);} .dot.flat{background:var(--flat);}
+  .flowpanel{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:20px;}
+  .fbar{height:5px; background:#222b38; border-radius:999px; margin-top:6px; max-width:140px;}
+  .fbar-fill{height:100%; border-radius:999px;}
   .method{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; margin-top:20px; font-size:13px; color:var(--muted); line-height:1.8;}
   .method h3{color:var(--text); font-size:15px; margin-bottom:8px;}
   .err{background:rgba(248,81,73,.12); border:1px solid var(--down); color:var(--down); border-radius:10px; padding:14px; margin-bottom:16px; text-align:center; display:none;}
@@ -89,19 +92,42 @@
     </div>
     <div class="chips" id="topChips"></div>
   </div>
+  <div class="flowpanel" id="flowPanel" style="display:none;">
+    <div class="sector-head" style="margin-bottom:10px;">
+      <div><span class="sector-name">💰 板块资金流向</span><span class="sector-en">24h 市值变化 · 按流入强度排序</span></div>
+      <span id="flowSummary" style="font-size:13px; color:var(--muted);"></span>
+    </div>
+    <table>
+      <tr><th>板块</th><th>24h 变化</th><th>板块市值</th><th>24h 交易量</th></tr>
+      <tbody id="flowBody"></tbody>
+    </table>
+    <div class="score-line">以板块 24h 市值变化代表资金流向（价格涨跌是主因，配合交易量判断真假）；绿色为净流入、红色为净流出。数据来源 CoinGecko Categories。</div>
+  </div>
   <div class="grid" id="sectorGrid"></div>
   <div class="method">
     <h3>趋势判定方法</h3>
     每个币种按 30 日涨跌（±10% 为强弱分界，计 ±2 分；±3%~±10% 计 ±1 分）、7 日涨跌（±5% 计 ±1 分）、24 小时涨跌（±3% 计 ±0.5 分）打分；
     总分 ≥ 1.5 为 <b class="pos">上升趋势</b>，≤ -1.5 为 <b class="neg">下降趋势</b>，之间为 <b style="color:var(--flat)">震荡整理</b>。
     板块趋势取该板块市值前五币种的平均分；大盘取前 30（剔除稳定币）按市值加权平均分。数据缺失的维度按 0 分计。
-    本页面仅做趋势展示，不构成投资建议。
+    <br>板块资金流向取 CoinGecko 各分类 24h 市值变化：正值为净流入、负值为净流出，按变化幅度排序；价格涨跌是市值变化的主因，需配合 24h 交易量判断资金真假。
+    <br>本页面仅做趋势展示，不构成投资建议。
   </div>
 </div>
 
 <footer>数据由 CoinGecko 公开 API 提供 · 页面在您的浏览器中直接请求数据，每 5 分钟自动更新</footer>
 <script>
 const API = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=1h,24h,7d,30d';
+const CAT_API = 'https://api.coingecko.com/api/v3/coins/categories';
+const FLOW_SECTORS = [
+  {zh:'基础公链', en:'Layer 1', cat:'layer-1'},
+  {zh:'二层扩容', en:'Layer 2', cat:'layer-2'},
+  {zh:'去中心化金融', en:'DeFi', cat:'decentralized-finance-defi'},
+  {zh:'人工智能', en:'AI', cat:'artificial-intelligence'},
+  {zh:'模因币', en:'Meme', cat:'meme-token'},
+  {zh:'区块链游戏', en:'Gaming', cat:'gaming'},
+  {zh:'现实世界资产', en:'RWA', cat:'real-world-assets-rwa'},
+  {zh:'物理基础设施', en:'DePIN', cat:'depin'},
+];
 const STABLES = new Set(['tether','usd-coin','usds','usde','dai','usd1','global-dollar','frax','paypal-usd','first-digital-usd','liquity-usd','usdd','terrausd','neutrino-usd','magic-internet-money','alchemix-usd','float-protocol','rai','stableusd']);
 const SECTORS = [
   {zh:'基础公链', en:'Layer 1', ids:['bitcoin','ethereum','solana','ripple','binancecoin','tron','cardano','avalanche-2','sui','near','hedera-hashgraph','stellar','litecoin','bitcoin-cash','toncoin','polkadot','cosmos','aptos','zcash','monero']},
@@ -146,6 +172,36 @@ function fmtMcap(m){
   if(!m) return '--';
   return '$'+(m/1e8).toFixed(1)+'亿';
 }
+function fmtVol(v){
+  if(!v) return '--';
+  if(v>=1e8) return '$'+(v/1e8).toFixed(1)+'亿';
+  return '$'+(v/1e4).toFixed(1)+'万';
+}
+function renderFlow(cats){
+  const byId={}; cats.forEach(c=>{byId[c.id]=c;});
+  const rows=FLOW_SECTORS.map(s=>{
+    const c=byId[s.cat]; if(!c) return null;
+    return {zh:s.zh, en:s.en, chg:num(c.market_cap_change_24h), mcap:c.market_cap||0, vol:c.volume_24h||0};
+  }).filter(Boolean);
+  if(!rows.length) return;
+  rows.sort((a,b)=>b.chg-a.chg);
+  const maxAbs=Math.max.apply(null, rows.map(r=>Math.abs(r.chg)).concat([0.01]));
+  const inN=rows.filter(r=>r.chg>0).length;
+  const body=rows.map(r=>{
+    const cls=r.chg>0?'pos':(r.chg<0?'neg':'neu');
+    const sign=r.chg>0?'+':'';
+    const w=(Math.abs(r.chg)/maxAbs*100).toFixed(1);
+    const barColor=r.chg>0?'var(--up)':(r.chg<0?'var(--down)':'var(--flat)');
+    return '<tr><td><span class="sym">'+r.zh+'</span><span class="sector-en">'+r.en+'</span></td>'+
+      '<td><span class="'+cls+'">'+sign+r.chg.toFixed(2)+'%</span>'+
+      '<div class="fbar"><div class="fbar-fill" style="width:'+w+'%;background:'+barColor+'"></div></div></td>'+
+      '<td>'+fmtMcap(r.mcap)+'</td><td>'+fmtVol(r.vol)+'</td></tr>';
+  }).join('');
+  document.getElementById('flowBody').innerHTML=body;
+  document.getElementById('flowSummary').innerHTML='8 大板块中 <b class="pos">'+inN+'</b> 个净流入、<b class="neg">'+(rows.length-inN)+'</b> 个净流出';
+  document.getElementById('flowPanel').style.display='block';
+}
+
 let countdownTimer=null, refreshTimer=null, nextRefresh=0;
 
 function renderOverview(list){
@@ -219,6 +275,13 @@ async function load(manual){
     if(!Array.isArray(list)||!list.length) throw new Error('empty');
     renderOverview(list);
     renderSectors(list);
+    try{
+      const r2=await fetch(CAT_API);
+      if(r2.ok){
+        const cats=await r2.json();
+        if(Array.isArray(cats)&&cats.length) renderFlow(cats);
+      }
+    }catch(e2){ /* 板块流向拉取失败不影响主面板 */ }
     document.getElementById('loading').style.display='none';
     document.getElementById('content').style.display='block';
     const now=new Date();
